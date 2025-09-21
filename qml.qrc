@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>utils.js</file>
+    </qresource>
+    <qresource prefix="/launchers">
+        <file>Application.qml</file>
+        <file>Applications.qml</file>
+        <file>appShowInfo.qml</file>
+    </qresource>
+    <qresource prefix="/icons">
+        <file>fiber_manual_record_80dp_E3E3E3_FILL0_wght400_GRAD200_opsz48.png</file>
+    </qresource>
+</RCC>
