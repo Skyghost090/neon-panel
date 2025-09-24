@@ -8,7 +8,7 @@ Modern and clean panel
 Qt 5.3.2
 ```
 
-# Dependências
+# Dependencies
 ```
 sudo apt install qt5-default
 sudo apt install libqt5x11extras5-dev
