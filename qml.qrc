@@ -7,8 +7,11 @@
         <file>Application.qml</file>
         <file>Applications.qml</file>
         <file>appShowInfo.qml</file>
+        <file>tray.qml</file>
+        <file>applet.qml</file>
     </qresource>
     <qresource prefix="/icons">
         <file>fiber_manual_record_80dp_E3E3E3_FILL0_wght400_GRAD200_opsz48.png</file>
+        <file>xfce-unknown.svg</file>
     </qresource>
 </RCC>

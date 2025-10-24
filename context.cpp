@@ -1,9 +1,10 @@
 #include "context.h"
 #include <unistd.h>
 #include <iostream>
-#include <toml.hpp>
+#include <toml++/toml.hpp>
+#include <filesystem>
 
-QString nome, icone, tmp, execApp, wmclass, iconDefault;
+QString nome, icon, tmp, execApp, wmclass, iconDefault;
 QStringList list, nitems;
 bool stop = false;
 
@@ -121,9 +122,12 @@ QImage Context::imageOverlay(const QImage& baseImage, const QImage& overlayImage
     return imageWithOverlay;
 }
 
-void Context::showMoreWindows(int winId, int h)
+void Context::showMoreWindows(int winId, int h, int onTop)
 {
-    this->xreservedSpace(winId, h);
+    if (onTop == 0)
+        this->xreservedSpace(winId, h, false);
+    if (onTop == 1)
+        this->xreservedSpace(winId, h, true);
 }
 
 void Context::sleepDelay(int time)
@@ -177,30 +181,27 @@ QList<int> Context::windowsBywmclass(QString wmclass)
     Display *display = QX11Info::display();
     QList<int> list;
 
-    if (display)
+    Atom atom = XInternAtom(display, "_NET_CLIENT_LIST", True);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems;
+    unsigned long bytes_after;
+    unsigned char *prop;
+
+    int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, False, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
+
+    Window *lists = (Window *)((unsigned long *)prop);
+
+    for (int i = 0; i < nitems; i++)
     {
-        Atom atom = XInternAtom(display, "_NET_CLIENT_LIST", True);
-        Atom actual_type;
-        int actual_format;
-        unsigned long nitems;
-        unsigned long bytes_after;
-        unsigned char *prop;
-
-        int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, False, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
-
-        Window *lists = (Window *)((unsigned long *)prop);
-
-        for (int i = 0; i < nitems; i++)
+        if (wmclass == QString(this->xwindowClass(lists[i])).toLower())
         {
-            if (wmclass == QString(this->xwindowClass(lists[i])).toLower())
-            {
-                list.append(lists[i]);
-            }
+            list.append(lists[i]);
         }
-
-        XFree(prop);
-        XFlush(display);
     }
+
+    XFree(prop);
+    XFlush(display);
 
     return list;
 }
@@ -251,36 +252,31 @@ void Context::configWmclass(){
         wmclass = this->launcherFix(wmclass);
     }
 }
-
 void Context::iconPath(QFileInfo file, QString path)
 {
     QStringList exts;
     exts << ".svg" << ".png" << ".xpm";
 
     foreach (QString ext, exts) {
-        icone = path + "/" + this->defaultIconTheme + "/apps/scalable/" + tmp + ext;
-        file.setFile(icone);
+        icon = path + "/" + this->defaultIconTheme + "/apps/scalable/" + tmp + ext;
+        file.setFile(icon);
 
         if (file.exists()) {
             stop = true;
             break;
         }
 
-        if(!stop) icone = "";
+        if(!stop) icon = "";
     }
 
-    if (icone.isEmpty()) {
-
+    if (icon.isEmpty()) {
         foreach (QString ext, exts) {
-            icone = "/usr/share/pixmaps/" + tmp + ext;
-            file.setFile(icone);
+            icon = "/usr/share/pixmaps/" + tmp + ext;
+            file.setFile(icon);
 
-            if (file.exists()) {
-                stop = true;
-                break;
-            }
+            if (file.exists()) { stop = true; break; }
 
-            if(!stop) icone = "";
+            if(!stop) icon = "";
         }
     }
 }
@@ -291,18 +287,18 @@ void Context::indentPath(QFileInfo file)
     if (tmp.endsWith(".svg")) tmp = tmp.remove(".png");
     if (tmp.endsWith(".xpm")) tmp = tmp.remove(".png");
 
-    QIcon icon;
-    foreach (QString path, icon.themeSearchPaths()) {
+    QIcon qicon;
+    foreach (QString path, qicon.themeSearchPaths()) {
         this->iconPath(file, path);
 
-        if (icone.isEmpty()) {
-            icone = iconDefault;
+        if (icon.isEmpty()) {
+            icon = iconDefault;
         }
 
         if (stop) break;
     }
 
-    list << nome << "file://" + icone << execApp << wmclass.toLower();
+    list << nome << "file://" + icon << execApp << wmclass.toLower();
 }
 
 QStringList Context::addLauncher(QString app)
@@ -335,26 +331,27 @@ QStringList Context::addLauncher(QString app)
 Window Context::windowId(int pid)
 {
     Display *display = QX11Info::display();
-    int pro_id;
+    int pro_id, status;
     Window winId;
-    int status;
-    unsigned long *desktop;
-    unsigned long size;
+    unsigned long *desktop, size;
 
     Window *client_list = this->xwindows(display, &size);
 
-    if (client_list != NULL)
+    if (client_list == NULL)
     {
-        for (int i = 0; i < size; i++)
-        {
-            Window tmpId = client_list[i];
-            pro_id = this->xwindowPid(tmpId);
+        XFree(client_list);
+        XFlush(display);
+        return winId;
+    }
+    for (int i = 0; i < size; i++)
+    {
+        Window tmpId = client_list[i];
+        pro_id = this->xwindowPid(tmpId);
 
-            if (pro_id == pid)
-            {
-                winId = tmpId;
-                break;
-            }
+        if (pro_id == pid)
+        {
+            winId = tmpId;
+            break;
         }
     }
 
@@ -510,6 +507,7 @@ QStringList Context::plugins()
 
         if (!cname.isEmpty())
             list << cname + ";" + settings.value("Icon").toString() + ";" + settings.value("Qml").toString() + ";" + settings.value("Lib").toString()+ ";" + settings.value("MoreSettingsss").toString();
+
         settings.endGroup();
     }
 
@@ -537,18 +535,17 @@ QStringList Context::applications()
     return list;
 }
 
-void Context::dragDrop(QString icone, QString app)
+void Context::dragDrop(QString iconDrag, QString app)
 {
     QMimeData *mimeData = new QMimeData;
     QList<QUrl> url;
-
     url.append(QUrl(app));
     mimeData->setUrls(url);
 
-    QImage img(icone, icone.split(".").at(1).toUtf8());
+    QImage img(iconDrag, iconDrag.split(".").at(1).toUtf8());
     QImage image = img.scaled(48, 48, Qt::KeepAspectRatio);
-
     QPixmap pixel;
+
     pixel.convertFromImage(image);
 
     QDrag *drag = new QDrag(this);
@@ -568,12 +565,13 @@ QString Context::userName()
 }
 
 
-QString Context::parseConfigString(QString value)
+QString Context::parseConfigString(QString Key, QString Value)
 {
     try
     {
-        auto data = toml::parse("config.toml");
-        return QString::fromStdString(toml::find<std::string>(data, value.toUtf8().constData()));
+        auto data = toml::parse_file("config.toml");
+        std::optional<std::string> out = data[Key.toUtf8().constData()][Value.toUtf8().constData()].value<std::string>();
+        return QString::fromStdString(out.value());
     }
     catch (...)
     {
@@ -582,16 +580,71 @@ QString Context::parseConfigString(QString value)
     }
 }
 
-int Context::parseConfigInt(QString value)
+int Context::parseConfigInt(QString Key, QString Value)
 {
     try
     {
-        auto data = toml::parse("config.toml");
-        return toml::find<int>(data, value.toUtf8().constData());
+        auto data = toml::parse_file("config.toml");
+        return data[Key.toUtf8().constData()][Value.toUtf8().constData()].value_or(0);
     }
     catch (...)
     {
         std::cerr << "Parsing failed:\n";
         return -1;
     }
+}
+
+QStringList Context::getAppletsPanel(){
+    QStringList list;
+    try
+    {
+        std::string path = "./";
+        for (const auto & entry : std::filesystem::directory_iterator(path)) {
+            std::string filename = entry.path();
+            if (filename.find(".toml") != std::string::npos && filename.find("config.toml") == std::string::npos){
+                auto data = toml::parse_file(filename);
+                std::optional<std::string> out = data["applet"]["uiPanel"].value<std::string>();
+                list.append(out.value().c_str());
+            }
+        }
+        return list;
+    }
+    catch (...)
+    {
+        std::cerr << "Parsing failed:\n";
+        return list;
+    }
+}
+
+QStringList Context::getAppletsIcons(){
+    QStringList list;
+    try
+    {
+        std::string path = "./";
+        for (const auto & entry : std::filesystem::directory_iterator(path)) {
+            std::string filename = entry.path();
+            if (filename.find(".toml") != std::string::npos && filename.find("config.toml") == std::string::npos){
+                auto data = toml::parse_file(filename);
+                std::optional<std::string> out = data["applet"]["icon"].value<std::string>();
+                list.append(out.value().c_str());
+            }
+        }
+        return list;
+    }
+    catch (...)
+    {
+        std::cerr << "Parsing failed:\n";
+        return list;
+    }
+}
+
+void Context::updatePanelWidth(QWindow *window)
+{
+    QRect geometry = this->primaryDisplayDimensions();
+    window->setWidth(geometry.width());
+}
+
+void Context::getTrayList()
+{
+    this->getXTrayList();
 }

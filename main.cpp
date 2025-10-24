@@ -7,6 +7,7 @@
 #include <X11/Xlib.h>
 #include <toml++/toml.hpp>
 #include <csignal>
+#include <iostream>
 #include <stdlib.h>
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -33,44 +34,55 @@ public:
     QStyle *m_style;
 };
 
+auto config = toml::parse_file("config.toml");
 
-int main(int argc, char *argv[])
+int getConfigHeight()
 {
-    QApplication app(argc, argv);
-
     int h;
     try {
-        auto config = toml::parse_file("config.toml");
         h = config["dimensions"]["height"].value_or(0);
     } catch (const toml::parse_error& err) {
         h = 40;
     }
+    return h;
+}
 
-    QDesktopWidget desktop;
-    Context context;
-    context.basepath = app.applicationDirPath();
+bool getOnTopConfig(QWindow *window, QRect screenGeometry)
+{
+    std::optional<std::string> position = config["dimensions"]["panelPosition"].value<std::string>();
+    int height = getConfigHeight();
+    if(position == "top"){
+        window->setGeometry(screenGeometry.x(), 0,screenGeometry.width(), height);
+        return true;
+    } else if(position == "bottom") {
+        window->setGeometry(screenGeometry.x(), screenGeometry.height() + screenGeometry.y() - height,screenGeometry.width(), height);
+        return false;
+    }
+}
 
-    QQuickImage image;
-    image.ctx = &context;
-
+void ifDisplayIsOpened()
+{
     Display *display;
     // Open a connection to the X server
     display = XOpenDisplay(NULL);
     if (display == NULL) {
         fprintf(stderr, "Cannot open display\n");
-        return 1;
+        exit(1);
     }
-    Screen* scr = DefaultScreenOfDisplay(display); // Get the default screen
-    int xorgscreenHeight = scr->height;
-    int xorgscreenWidth = scr->width; // Get the screen width
 
     XCloseDisplay(display);
+}
 
-    QRect screenGeometry = context.primaryDisplayDimensions();
-    int screenWidth = screenGeometry.width();
-    int screenHeight = screenGeometry.height();
+int main(int argc, char *argv[])
+{
+    QApplication app(argc, argv);
+    QDesktopWidget desktop;
+    Context context;
+    context.basepath = app.applicationDirPath();
+    QQuickImage image;
+    image.ctx = &context;
 
-    Threads *threads = new Threads();
+    ifDisplayIsOpened();
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("Context", &context);
@@ -80,18 +92,16 @@ int main(int argc, char *argv[])
 
     QObject *main = engine.rootObjects().first();
     QWindow *window = qobject_cast<QWindow *>(main); // (QWindow *)main
-    window->setGeometry(screenGeometry.x(), screenHeight + screenGeometry.y() - h,screenWidth, h);
-
+    QRect screenGeometry = context.primaryDisplayDimensions();
     window->setProperty("mainId", window->winId());
     window->xChanged(Qt::WA_X11DoNotAcceptFocus | Qt::WA_X11NetWmWindowTypeDock);
-
     app.setAttribute(Qt::AA_X11InitThreads);
 
+    Threads *threads = new Threads();
     threads->main = window;
     threads->start();
 
     context.xchange(window->winId(), "_NET_WM_WINDOW_TYPE_DOCK");
-    context.xreservedSpace(window->winId(), window->height());
-
+    context.xreservedSpace(window->winId(), window->height(), getOnTopConfig(window, screenGeometry));
     return app.exec();
 }

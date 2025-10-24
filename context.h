@@ -60,20 +60,24 @@ public:
     Q_INVOKABLE void windowActive(int window);
     Q_INVOKABLE void windowClose(int window);
     Q_INVOKABLE QList<int> windowsBywmclass(QString wmclass);
-    Q_INVOKABLE void showMoreWindows(int winId, int h);
+    Q_INVOKABLE void showMoreWindows(int winId, int h, int onTop);
     Q_INVOKABLE void libraryVoidLoad(int arg, QString args, QString funcName, QString pluginName);
     Q_INVOKABLE int libraryIntLoad(int arg, QString args, QString funcName, QString pluginName);
     Q_INVOKABLE QString libraryQStringLoad(int arg, QString args, QString funcName, QString pluginName);
     Q_INVOKABLE void libraryVoidLoad(QString funcName, QString pluginName);
     Q_INVOKABLE void sleepDelay(int time);
     Q_INVOKABLE int libraryIntLoad(QString funcName, QString pluginName);
-    Q_INVOKABLE QString parseConfigString(QString value);
-    Q_INVOKABLE int parseConfigInt(QString value);
+    Q_INVOKABLE QString parseConfigString(QString Key, QString Value);
+    Q_INVOKABLE int parseConfigInt(QString Key, QString Value);
+    Q_INVOKABLE void updatePanelWidth(QWindow *window);
     Q_INVOKABLE QString libraryQStringLoad(QString funcName, QString pluginName);
     Q_INVOKABLE QStringList plugins();
     Q_INVOKABLE int iconHidden(Window* lists, unsigned long nitems);
     Q_INVOKABLE void iconPath(QFileInfo file, QString path);
     Q_INVOKABLE void indentPath(QFileInfo file);
+    Q_INVOKABLE void getTrayList();
+    Q_INVOKABLE QStringList getAppletsPanel();
+    Q_INVOKABLE QStringList getAppletsIcons();
     QString basepath;
 
 protected:

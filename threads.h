@@ -23,18 +23,21 @@ public:
     void run();
     QWindow *main;
     void renderWindowlist(Context& context);
+    void modifiedWindowList(Context& context);
 
 private:
     QList<QVariant> windowList;
     Window *client_list;
     void createWindowicon(Context& context, int& i);
+    void CreateWindowicon(Context& context, int& i);
+    void renderTrayIcons(Context& context, XEvent event);
     bool noWindow;
     Threads *windowlistThread[99], *renderThread[99], *clearwindowThread, *guiThread;
 
 signals:
     void onCreate();
     void onDestroy();
-    void onDesktopWindow(QString nome, QString wmclass, int winId);
+    void onDesktopWindow(QString nome, QString wmclass, int winId, int size);
     void onClearWindows();
 };
 

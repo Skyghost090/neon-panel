@@ -39,15 +39,17 @@ public:
     Window xwindowIdByClass(QString wmclass);
     bool xsingleActive(QString wmclass);
     void xchange(Window window, const char * atom);
-    void xreservedSpace(Window window, int h);
+    void xreservedSpace(Window window, int h, bool onTop);
     QRect primaryDisplayDimensions();
     unsigned char* windowProperty(Display *display, Window window, const char *arg, unsigned long *nitems, int *status);
     QString xwindowLauncher(Window window);
     void xaddDesktopFile(int pid, QString arg);
     QPixmap xwindowIcon(Window window);
     XWindowAttributes attrWindow(Display *display, Window window);
+    void setWmStrutValues(bool onTop, long *prop);
     void resizeWindow(Display *display, Window window, int x, int y, unsigned int w, unsigned int h);
     void xwindowClose(Window window);
+    void getXTrayList();
 
 private:
     QThread t;

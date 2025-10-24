@@ -25,7 +25,7 @@ ApplicationWindow {
     Rectangle {
         id: showInfosBg
         anchors.fill: parent
-        color: Context.parseConfigString("backgroundColor")
+        color: Context.parseConfigString("colors", "backgroundColor")
         radius: 10
         opacity: 0.0
     }
@@ -147,7 +147,7 @@ ApplicationWindow {
 
         if (winIds.length > 0) {
 
-            showInfosBg.opacity = Context.parseConfigInt("menuOpacity") / 100
+            showInfosBg.opacity = Context.parseConfigInt("colors","menuOpacity") / 100
 
             nome = winIds.length > 1 ? "Fechar Todas" : "Fechar"
             size = nome.length < 16 ?  nome.length * 10 : nome.length * 6.6

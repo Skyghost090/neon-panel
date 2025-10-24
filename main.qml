@@ -12,25 +12,22 @@ ApplicationWindow {
     x: 0
     y: 0
     width: 1000
-    height: Context.parseConfigInt("barHeight")
+    height: Context.parseConfigInt("dimensions","barHeight")
     title: qsTr("Neon Painel")
 
     color: "transparent"
 
-    // property alias rectangle10: rectangle10
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus
 
-    // property var neonMenu: Object
-    property string color_: Context.parseConfigString("backgroundColor")
-    property string detailColor: Context.parseConfigString("accent")
-    property double opc: Context.parseConfigInt("backgroundOpacity") / 100
+    property string color_: Context.parseConfigString("colors", "backgroundColor")
+    property string detailColor: Context.parseConfigString("colors", "accent")
+    property double opc: Context.parseConfigInt("colors", "backgroundOpacity") / 100
     property double clickOpc: 0.0
     property double startOpc: 0.0
     property int mainId: 0
     property bool openMenu: false
 
     property var showAppInfo: Object
-    property var acessoRapido: Object
 
     property int launcherX: 0
     property var launcher: []
@@ -41,9 +38,14 @@ ApplicationWindow {
     property bool subLauncherStarted: true
     property bool windowVerify: false
     property bool firstApp: true
+    property int onTop: 0
     property bool trayOpened: false
+    property bool trayStarted: false
+    property int trayIdsArray: []
+    property int trayIcons: 0
+    property var iconsList: []
 
-    signal desktopWindow(string _nome, string wmclass, int winId)
+    signal desktopWindow(string _nome, string wmclass, int winId, int size)
     signal clearWindows
 
     function clearWindow() {
@@ -68,6 +70,27 @@ ApplicationWindow {
         }
     }
 
+    function cleanTrayIcons(){
+        for (var i = trayBar.children.length - 1; i >= 0; i--) {
+            trayBar.children[i].destroy();
+        }
+    }
+
+    function addTrayIcon(args) {
+        // trayIdsArray.push(args)
+        print(args)
+        trayIcons++
+        // var list = args.split("|@|")
+        var trayCompon = Qt.createComponent("launchers/tray.qml")
+        var trayObj =  trayCompon.createObject(trayBar, {'x': main.width / 4.35 - 25 * trayIcons, 'y': 0, 'winId': args})
+    }
+
+    function addAppletIcon(src){
+        trayIcons++
+        var trayCompon = Qt.createComponent("launchers/applet.qml")
+        var trayObj =  trayCompon.createObject(trayBar, {'x': main.width / 4.35 - 25 * trayIcons, 'y': 0, 'image': src})
+    }
+
     onClearWindows: {
 
         for (var i = 0; i < subLauncher.length; i++) {
@@ -90,32 +113,42 @@ ApplicationWindow {
 
     onDesktopWindow: {
         clearWindow()
+        cleanTrayIcons()
+        trayIcons = 0
+        var applets = Context.getAppletsPanel()
+        var icons = Context.getAppletsIcons()
+        for (var i = 0; i != icons.length; i++){
+            print(icons[i])
+            addAppletIcon(icons[i])
+        }
+
+        if (Context.parseConfigString("dimensions", "panelPosition") == "top")
+            onTop = 1
 
         var fixicede = false
         subAppbar.width = 50
         subAppbar.height = main.height
-        if (Context.parseConfigString("taskbarPosition") == "center"){
+        if (Context.parseConfigString("taskbar","taskbarPosition") == "center"){
             var degressX = subAppbar.width / 2
             subAppbar.x = Screen.width / 2
         }
 
-        if (Context.parseConfigString("taskbarPosition") == "start"){
+        if (Context.parseConfigString("taskbar","taskbarPosition") == "start"){
             var degressX = subAppbar.width
             subAppbar.x = main.height
         }
 
         for (var j = 0; j < launcher.length; j++) {
-            if (launcher[j].pidname === wmclass) {
+            if (launcher[j].pidname === wmclass)
                 fixicede = true
-            }
         }
 
         for (var t = 0; t < subLauncher.length; t++) {
-            if (subLauncher[t].pidname === wmclass) {
+            if (subLauncher[t].pidname === wmclass)
                 fixicede = true
-            }
+
             subAppbar.width += 50
-            if (Context.parseConfigString("taskbarPosition") == "center")
+            if (Context.parseConfigString("taskbar","taskbarPosition") == "center")
                 subAppbar.x -= degressX
         }
 
@@ -136,6 +169,7 @@ ApplicationWindow {
 
             var compon = Qt.createComponent("launchers/Applications.qml")
             var obj = compon.createObject(subAppbar, {'x': subLauncherX, 'y': 0, 'nome': _nome, 'pidname': wmclass, 'winId': winId})
+            iconsList.push(obj)
 
             obj.height = main.height
             obj.width = main.height
@@ -143,7 +177,7 @@ ApplicationWindow {
                 btnShowMore.visible = false
                 subLauncherX += main.height + 5
 
-                if (Context.parseConfigString("taskbarPosition") == "center")
+                if (Context.parseConfigString("taskbar","taskbarPosition") == "center")
                     subAppbar.x -= degressX
 
                     if (!btnShowMore.moreArea) {
@@ -152,8 +186,7 @@ ApplicationWindow {
                         btnShowMore.rotation = 0
                         main.y += main.height + 5
                         main.height -= main.height + 5
-                        // accessSpeed.y = 0
-                        Context.showMoreWindows(mainId, main.height + 5)
+                        Context.showMoreWindows(mainId, main.height + 5, onTop)
                     }
 
             } else {
@@ -162,7 +195,6 @@ ApplicationWindow {
                 subAppbar.x -= degressX
             }
 
-
             subLauncher.push(obj)
             obj.destak.visible = true
             if (launcher.length > 0) separatorBar.visible = true
@@ -170,7 +202,6 @@ ApplicationWindow {
     }
 
     MouseArea {
-        // blank space panel click
         id: mouseMain
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         anchors.fill: parent
@@ -289,6 +320,15 @@ ApplicationWindow {
             color: "transparent"
 
             Rectangle {
+                id: trayBar
+                x: -main.width / 4.70
+                y: 0
+                height: parent.height
+                width: main.width / 4.35
+                color: "transparent"
+            }
+
+            Rectangle {
                 id: verticaline
                 x: 0
                 y: 0
@@ -312,8 +352,6 @@ ApplicationWindow {
 
                         onClicked: {
 
-                            // acessoRapido.visible = false
-
                             if (parent.moreArea) {
 
                                 main.y -= 40
@@ -321,7 +359,6 @@ ApplicationWindow {
                                 verticaline.height += 40
                                 btnShowMore.rotation = 180
                                 main.height += 40
-                                // accessSpeed.y = 19
                                 Context.showMoreWindows(mainId, 80)
 
                             } else {
@@ -331,7 +368,6 @@ ApplicationWindow {
                                 btnShowMore.rotation = 0
                                 main.y += 40
                                 main.height -= 40
-                                // accessSpeed.y = 0
                                 Context.showMoreWindows(mainId, 40)
                             }
 
@@ -354,7 +390,7 @@ ApplicationWindow {
                 anchors.topMargin: 12
                 anchors.right: parent.right
                 anchors.rightMargin: 35
-                font.pointSize: main.height / 4
+                font.pointSize: main.height / 5 + 1
                 color: "#ffffff"
 
                 Timer {
@@ -364,7 +400,6 @@ ApplicationWindow {
                     onTriggered: {
                         var d = Utils.getTime().split('|')
                         clock.text = d[0]
-                        // acessoRapido.acessText.text = d[1]
                     }
                }
             }
@@ -392,6 +427,11 @@ ApplicationWindow {
 
     Component.onCompleted: {
         // event click listener
+        if (trayStarted == false){
+            Context.getTrayList()
+            trayStarted = true
+        }
+
         var info = Qt.createComponent("qrc:/launchers/appShowInfo.qml")
         showAppInfo = info.createObject(applicationBar)
         showAppInfo.visible = false

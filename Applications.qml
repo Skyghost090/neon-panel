@@ -1,7 +1,6 @@
 import QtQuick 2.3
 import QtQuick.Controls 1.2
 
-
 Rectangle {
     id: applicationInfo
     width: 40
@@ -58,7 +57,6 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
 
         onClicked: {
-
             if (mouse.button & Qt.LeftButton) {
 
                 showAppInfo.visible = false

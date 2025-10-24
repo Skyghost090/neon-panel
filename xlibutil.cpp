@@ -7,12 +7,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <toml++/toml.hpp>
 #include <opencv2/dnn_superres.hpp>
+#include <QObject>
+#include <QX11Info>
+#include <QList>
+
 using namespace cv::dnn_superres;
 
 extern "C" {
     #include <xdo.h>
 }
+
+#define _NET_SYSTEM_TRAY_ORIENTATION_HORZ 0
+#define _NET_SYSTEM_TRAY_ORIENTATION_VERT 1
+
+#define SYSTEM_TRAY_REQUEST_DOCK    0
+#define SYSTEM_TRAY_BEGIN_MESSAGE   1
+#define SYSTEM_TRAY_CANCEL_MESSAGE  2
+
+#define XEMBED_EMBEDDED_NOTIFY  0
+#define XEMBED_MAPPED (1 << 0)
+
 
 Xlibutil::Xlibutil()
 {
@@ -46,27 +62,46 @@ QRect Xlibutil::primaryDisplayDimensions()
     return screenGeometry;
 }
 
-void Xlibutil::xreservedSpace(Window window, int h)
+void Xlibutil::setWmStrutValues(bool onTop, long *prop)
+{
+    // set in xorg reserved space in desktop
+    // long prop[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    QRect geometry = this->primaryDisplayDimensions();
+
+    if(onTop == false){
+        prop[10] = geometry.x();
+        prop[11] = geometry.width();
+    } else {
+        prop[8] = geometry.x();
+        prop[9] = geometry.width();
+    }
+}
+
+void Xlibutil::xreservedSpace(Window window, int h, bool onTop)
 {
     Display *display = XOpenDisplay(NULL);
     QRect geometry = this->primaryDisplayDimensions();
-    Screen* scr = DefaultScreenOfDisplay(display); // Get the default screen
-    int xorgscreenHeight = scr->height;
-    int xorgscreenWidth = scr->width;
+    Screen* scr = DefaultScreenOfDisplay(display);
+    int extraMargin = scr->height - geometry.height();
+    long prop[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // set in xorg reserved space in desktop
+    int positionProperty;
 
-    // set in xorg reserved space in desktop
-    long prop[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, geometry.x(), geometry.width()};
+    if (onTop == false)
+        positionProperty = 3;
+    else
+        positionProperty = 2;
 
-    int extraMargin = xorgscreenHeight - geometry.height();
-    if (geometry.y() != 0){
-        prop[3] = h;
-    } else {
-        prop[3] = h + extraMargin;
-    }
+    setWmStrutValues(onTop, prop);
+
+    if (geometry.y() != 0)
+        prop[positionProperty] = h;
+    else
+        prop[positionProperty] = h + extraMargin;
 
     XChangeProperty(display, window,
                     XInternAtom(display, "_NET_WM_STRUT_PARTIAL", false),
                     XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&prop, 12);
+
     XFlush(display);
 }
 
@@ -248,6 +283,8 @@ Window* Xlibutil::xwindows(Display *display, unsigned long *size)
 
         int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, false, AnyPropertyType, &actual_type, &actual_format, size, &bytes_after, &prop);
 
+        printf("%ld\n", ((unsigned long *)prop));
+
         Window *lists = (Window *)((unsigned long *)prop);
         XFlush(display);
         return lists;
@@ -259,28 +296,25 @@ Window* Xlibutil::xwindows(Display *display, unsigned long *size)
 Window Xlibutil::xwindowID(int pid)
 {
     Display *display = QX11Info::display();
+    if (!display)
+        return NULL;
 
-    if (display)
+    Atom atom = XInternAtom(display, "_NET_CLIENT_LIST", true);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop;
+
+    int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, false, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
+    Window *lists = (Window *)((unsigned long *)prop);
+
+    for (int i = 0; i < nitems; i++)
     {
-        Atom atom = XInternAtom(display, "_NET_CLIENT_LIST", true);
-        Atom actual_type;
-        int actual_format;
-        unsigned long nitems;
-        unsigned long bytes_after;
-        unsigned char *prop;
-
-        int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, false, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
-
-        Window *lists = (Window *)((unsigned long *)prop);
-
-        for (int i = 0; i < nitems; i++)
+        if (pid == this->xwindowPid(lists[i]))
         {
-            if (pid == this->xwindowPid(lists[i]))
-            {
-                XFree(prop);
-                XFlush(display);
-                return lists[i];
-            }
+            XFree(prop);
+            XFlush(display);
+            return lists[i];
         }
     }
 
@@ -423,8 +457,7 @@ void Xlibutil::xactiveByClass(QString wmclass)
 
         for (int i = 0; i < nitems; i++)
         {
-            if (wmclass == QString(this->xwindowClass(lists[i])).toLower())
-                this->xactive(lists[i]);
+            if (wmclass == QString(this->xwindowClass(lists[i])).toLower()) this->xactive(lists[i]);
         }
 
         XFlush(display);
@@ -436,32 +469,35 @@ bool Xlibutil::xwindowExist(QString wmclass)
 {
     Display *display = QX11Info::display();
 
-    if (display)
+    if (!display)
     {
-        Atom atom = XInternAtom(display, "_NET_CLIENT_LIST", true);
-        Atom actual_type;
-        int actual_format;
-        unsigned long nitems;
-        unsigned long bytes_after;
-        unsigned char *prop;
-
-        int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, false, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
-
-        Window *lists = (Window *)((unsigned long *)prop);
-
-        for (int i = 0; i < nitems; i++)
-        {
-            if (wmclass == QString(this->xwindowClass(lists[i])).toLower())
-            {
-                XFree(prop);
-                XFlush(display);
-                return true;
-            }
-        }
-
-        XFlush(display);
-        XFree(prop);
+        return false;
     }
+
+    Atom atom = XInternAtom(display, "_NET_CLIENT_LIST", true);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems;
+    unsigned long bytes_after;
+    unsigned char *prop;
+
+    int status = XGetWindowProperty(display, DefaultRootWindow(display), atom, 0, 4096 / 4, false, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
+
+    Window *lists = (Window *)((unsigned long *)prop);
+
+    for (int i = 0; i < nitems; i++)
+    {
+        if (wmclass == QString(this->xwindowClass(lists[i])).toLower())
+        {
+            XFree(prop);
+            XFlush(display);
+            return true;
+        }
+    }
+
+    XFlush(display);
+    XFree(prop);
+
     return false;
 }
 
@@ -497,20 +533,19 @@ void Xlibutil::xaddDesktopFile(int pid, QString arg)
 }
 
 cv::Mat applyAlphaChannel(const cv::Mat &upscaledBGR, const cv::Mat &originalBGRA) {
-    // Extrai o canal alfa do original
+    // Extract the canal alfa to original
     std::vector<cv::Mat> origChannels;
     cv::split(originalBGRA, origChannels);
     cv::Mat alpha = origChannels[3];
 
-    // Redimensiona o alfa para o tamanho da imagem upscaleada
     cv::Mat alphaUpscaled;
     cv::resize(alpha, alphaUpscaled, upscaledBGR.size(), 0, 0, cv::INTER_LINEAR);
 
-    // Converte BGR -> BGRA
+    // Convert BGR -> BGRA
     cv::Mat upscaledBGRA;
     cv::cvtColor(upscaledBGR, upscaledBGRA, cv::COLOR_BGR2BGRA);
 
-    // Substitui o canal alfa
+    // Replace the alfa channel
     std::vector<cv::Mat> channels;
     cv::split(upscaledBGRA, channels);
     channels[3] = alphaUpscaled;
@@ -539,13 +574,13 @@ QImage upscaleWithOpenCV(const QImage &input) {
     cv::Mat mat = QImageToMat(input);
 
     DnnSuperResImpl superResolution;
-    superResolution.readModel("ESPCN_x4.pb"); // caminho do modelo OpenCV ESRGAN
-    superResolution.setModel("espcn", 4);     // nome do modelo, fator de upscale 4
+    superResolution.readModel("ESPCN_x4.pb");
+    superResolution.setModel("espcn", 4);
 
     cv::Mat out;
     cv::Mat bgrImage;
     cv::cvtColor(mat, bgrImage, cv::COLOR_BGRA2BGR);
-    superResolution.upsample(bgrImage, out);        // aplica super-resolution
+    superResolution.upsample(bgrImage, out);
     cv::Mat outBGRA = applyAlphaChannel(out, mat);
 
     return MatToQImage(outBGRA);
@@ -573,13 +608,12 @@ QPixmap Xlibutil::xwindowIcon(Window window)
     unsigned long bytes_after, nitems;
     ulong* data;
     Window windowFocus;
+    QPixmap map;
 
     XGetInputFocus(display, &windowFocus, &revert_to);
     Atom prop = XInternAtom(display, "_NET_WM_ICON", false);
     XGetWindowProperty(display, window, prop, 0, LONG_MAX, false, AnyPropertyType,
                        &type, &format, &nitems, &bytes_after, (uchar**)&data);
-
-    QPixmap map;
 
     if (data != 0x0){
         map = renderWmIcon(data, map);
@@ -592,4 +626,85 @@ QPixmap Xlibutil::xwindowIcon(Window window)
     XFree(data);
     XFlush(display);
     return map;
+}
+
+void Xlibutil::getXTrayList()
+{
+    int format, revert_to;
+    unsigned long bytes_after, nitems;
+    Atom type;
+    ulong* data;
+    // Display *display = QX11Info::display();
+    // Atom prop = XInternAtom(display, "_NET_SYSTEM_TRAY_MESSAGE_DATA", false);
+    // printf("tray message lenght: %ld\n", sizeof(data));
+    int damageEvent;
+    int damageError;
+    Window trayId;
+    void clientMessageEvent(XClientMessageEvent* e);
+    Atom net_system_tray_opcode;
+    Atom net_system_tray_message_data;
+    Atom xembed_info;
+    Atom xembed;
+
+    Display *display = XOpenDisplay(0);
+    Window root = DefaultRootWindow(display);
+    bool block = true;
+
+    QString s = QString("_NET_SYSTEM_TRAY_S%1").arg(DefaultScreen(display));
+    Atom _NET_SYSTEM_TRAY_S =  XInternAtom(display, s.toLatin1(), False);
+
+    if (XGetSelectionOwner(display, _NET_SYSTEM_TRAY_S) != None)
+    {
+        block = false;
+        printf("Another systray is running\n");
+    }
+
+    // init systray protocol
+    trayId = XCreateSimpleWindow(display, root, -1, -1, 1, 1, 0, 0, 0);
+
+    XSetSelectionOwner(display, _NET_SYSTEM_TRAY_S, trayId, CurrentTime);
+    if (XGetSelectionOwner(display, _NET_SYSTEM_TRAY_S) != trayId)
+    {
+        block = false;
+        printf("Can't get systray manager\n");
+    }
+
+    if (block)
+    {
+        int orientation = _NET_SYSTEM_TRAY_ORIENTATION_HORZ;
+        Atom _orientation = XInternAtom(display, "_NET_SYSTEM_TRAY_ORIENTATION", False);
+
+        XChangeProperty(display, trayId, _orientation, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) &orientation, 1);
+
+        // ** Visual ********************************
+        VisualID visualId = 0;
+        Atom visual = XInternAtom(display, "_NET_SYSTEM_TRAY_VISUAL", False);
+        XChangeProperty(display, trayId, visual, XA_VISUALID, 32, PropModeReplace, (unsigned char*)&visualId, 1);
+        //        if (visualId)
+        //        {
+        //            XChangeProperty(display, trayId, visual, XA_VISUALID, 32, PropModeReplace, (unsigned char*)&visualId, 1);
+        //        }
+        // ******************************************
+
+        XClientMessageEvent ev;
+        Atom manager = XInternAtom(display, "MANAGER", False);
+
+        damageEvent = 0;
+        damageError = 0;
+
+        ev.type = ClientMessage;
+        ev.window = root;
+        ev.message_type = manager;
+        ev.format = 32;
+        ev.data.l[0] = CurrentTime;
+        ev.data.l[1] = _NET_SYSTEM_TRAY_S;
+        ev.data.l[2] = trayId;
+        ev.data.l[3] = 0;
+        ev.data.l[4] = 0;
+
+        XSendEvent(display, root, False, StructureNotifyMask, (XEvent*)&ev);
+        printf("Systray started\n");
+    }
+
+    XCloseDisplay(display);
 }
