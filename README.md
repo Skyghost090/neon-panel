@@ -1,6 +1,6 @@
-# Neon painel
+# Neon painel + Neon Menu
 ```
-Modern and clean panel
+Um painel e menu moderno e clean
 ```
 
 # QT Versão
@@ -8,7 +8,7 @@ Modern and clean panel
 Qt 5.3.2
 ```
 
-# Dependencies
+# Dependências
 ```
 sudo apt install qt5-default
 sudo apt install libqt5x11extras5-dev
@@ -28,12 +28,7 @@ sudo apt install libxinerama1
 sudo apt install libxinerama-dev
 sudo apt install libx11-dev
 sudo apt install libqt5x11extras5-dev
+sudo apt install wicd
 ```
-# Based on:
-https://github.com/emmilinux/neon-painel
-
-# How to build
-```
-qmake -o Makefile Neon_Panel.pro
-make
-```
+# Repositório migrado para:
+https://github.com/emmios/Synth_Panel
